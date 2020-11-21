@@ -1,10 +1,11 @@
 unit ufrmMP5;
 
 interface
-//descomente para fazer login pelo android
-//utilizei o componente Authentication for Android da WinSOFT
-//https://winsoft.sk/aauth.htm
-//{$DEFINE AUTENTICA_DEVICE}
+
+// descomente para fazer login pelo android
+// utilizei o componente Authentication for Android da WinSOFT
+// https://winsoft.sk/aauth.htm
+ //{$DEFINE AUTENTICA_DEVICE}
 
 uses
   System.SysUtils,
@@ -26,7 +27,6 @@ uses
   clisitef,
   wbt.CliSiTefI,
   FMX.Platform.Android,
-  aAuthentication,
 {$IFDEF AUTENTICA_DEVICE}
   aAuthentication,
 {$ENDIF}
@@ -91,46 +91,55 @@ procedure TfromTransacao.ExecutaTransacao(AFuncao: integer; AValor, ARestricoes,
 var
   lHora: string;
   lData: string;
-  lsts: integer;
+  lSts: integer;
 begin
-  lHora := FormatDateTime('HHNNSS', now);
-  lData := FormatDateTime('YYYYMMDD', now);
-  lsts := iniciaFuncaoSiTefInterativo(AFuncao, AValor, ANumeroDocumento, lData, lHora, ATerminal, ARestricoes);
+  lHora := FormatDateTime('hhmmss', now);
+  lData := FormatDateTime('yyyyMMdd', now);
 
-  if lsts = 10000 then
+  lSts := iniciaFuncaoSiTefInterativo(AFuncao, AValor, ANumeroDocumento, lData, lHora, ATerminal, ARestricoes);
+
+  if lSts = 10000 then
   begin
     tthread.CreateAnonymousThread(
       procedure
       begin
         tthread.Current.FreeOnTerminate := true;
-
         FRodando := true;
         repeat
-          lsts := continuaFuncaoSiTefInterativo;
-          if (lsts = 10000) then
+          lSts := continuaFuncaoSiTefInterativo;
+          if (lSts = 10000) then
           begin
             FProximoComando := getProximoComando;
             FEspera := true;
             handleMessage(FProximoComando);
-          end;
-        until not(FRodando or (lsts = 10000));
+          end
+          else if lSts < 1 then
+            FRodando := false;
+        until not(FRodando or (lSts = 10000));
 
-        if lsts = 0 then
+        if lSts = 0 then
         begin
-          lsts := finalizaTransacaoSiTefInterativoEx(1, lHora, lData, '120000', '');
-          if lsts = 10000 then
+          FRodando := true;
+
+          lSts := finalizaTransacaoSiTefInterativoEx(1, ANumeroDocumento, lData, lHora, '');
+          if lSts = 10000 then
             repeat
-              lsts := continuaFuncaoSiTefInterativo;
-              if lsts = 10000 then
+              lSts := continuaFuncaoSiTefInterativo;
+              if lSts = 10000 then
               begin
                 FProximoComando := getProximoComando;
                 FEspera := true;
                 handleMessage(FProximoComando);
-              end;
-            until not(FRodando or (lsts = 10000));
+              end
+              else
+                FRodando := false;
+            until not(FRodando or (lSts = 10000));
         end;
+        // tthread.Current.Terminate;
+        StatusSitef('Selecione a forma de pagamento');
       end).Start;
   end;
+
 end;
 
 procedure TfromTransacao.fanCreditoFinish(Sender: TObject);
@@ -159,8 +168,10 @@ begin
   FAuthentication.Description := 'Utilize suas credenciais do android para acessar o aplicativo.';
   FAuthentication.OnSuccess := OnAuthSuccess;
   FAuthentication.OnError := OnAuthError;
-  FAuthentication.devicesecured;
-  FAuthentication.ConfirmCredentials;
+  if FAuthentication.devicesecured then
+    FAuthentication.ConfirmCredentials
+  else
+    OnAuthSuccess(Sender);
 {$ELSE}
   OnAuthSuccess(Sender);
 {$ENDIF}
@@ -184,7 +195,7 @@ end;
 
 procedure TfromTransacao.OnAuthSuccess(Sender: TObject);
 var
-  lsts: integer;
+  lSts: integer;
 begin
   StatusSitef('Selecione a forma de pagamento');
   setDebug(true);
@@ -196,7 +207,7 @@ begin
       // Neste Ponto, você precisa entrar em contato com a software express e
       // solicitar o envio do sitef simulador para desenvolvimento
       // o endereço ip abaixo ficara disponivel até 26/11/2020
-      lsts := configuraIntSiTefInterativoEx('45.237.81.1:4096', '00000000', '00000000', '');
+      lSts := configuraIntSiTefInterativoEx('45.237.81.1:4096', '00000000', '00000000', '');
     end).Start;
 end;
 
@@ -239,8 +250,9 @@ begin
         StatusSitef(getBuffer);
       end;
 
-    19, CMD_CONFIRMA_CANCELA:
+    CMD_CONFIRMA_CANCELA:
       begin
+        SetBuffer('0');
       end;
 
     CMD_OBTEM_CAMPO, CMD_OBTEM_VALOR:
@@ -251,7 +263,7 @@ begin
       end;
     CMD_OBTEM_QUALQUER_TECLA, CMD_PERGUNTA_SE_INTERROMPE:
       begin
-      end
+      end;
   end;
   FEspera := false;
 end;
@@ -261,7 +273,7 @@ begin
   case campo of
     CAMPO_COMPROVANTE_CLIENTE, CAMPO_COMPROVANTE_ESTAB:
       begin
-        addStrRes(getBuffer);
+        // addStrRes(getBuffer);
       end
   end;
   FEspera := false;
